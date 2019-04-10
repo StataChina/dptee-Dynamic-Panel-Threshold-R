@@ -1,0 +1,58 @@
+\name{summary.dptee}
+\alias{summary.dptee}
+%- Also NEED an '\alias' for EACH other topic documented here.
+\title{
+Summary for dptee objects
+}
+\description{
+The summary method for dptee objects generates information about estimated dptee models.
+}
+\usage{
+\method{summary}{dptee}(object, method, digits = 3, ...)
+}
+%- maybe also 'usage' for other objects documented here.
+\arguments{
+  \item{object}{a dptee object,}
+  \item{method}{one of 'analytic' (default) or 'averaging',}
+  \item{digits}{the digits,}
+  \item{...}{further arguments.}
+}
+%\details{
+%%  ~~ If necessary, more details than the description above ~~
+%}
+%\value{
+%%  ~Describe the value returned
+%%  If it is a LIST, use
+%%  \item{comp1 }{Description of 'comp1'}
+%%  \item{comp2 }{Description of 'comp2'}
+%% ...
+%}
+%\references{
+%% ~put references to the literature/web site here ~
+%}
+\author{
+Frederico Uchoa
+}
+%\note{
+%%  ~~further notes~~
+%}
+
+%% ~Make other sections like Warning with \section{Warning }{....} ~
+
+\seealso{
+See Also \code{\link{dptee}}.
+}
+\examples{
+##---- Should be DIRECTLY executable !! ----
+##-- ==>  Define data, use random,
+##--	or do  help(data=index)  for the standard data sets.
+
+## The function is currently defined as
+function (x)
+{
+  }
+}
+% Add one or more standard keywords, see file 'KEYWORDS' in the
+% R documentation directory.
+\keyword{ ~kwd1 }% use one of  RShowDoc("KEYWORDS")
+\keyword{ ~kwd2 }% __ONLY ONE__ keyword per line
