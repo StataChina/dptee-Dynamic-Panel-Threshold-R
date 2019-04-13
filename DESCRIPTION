@@ -8,7 +8,7 @@ Maintainer: Frederico Uchoa <uchoa@ufba.br>
 Depends: 
     R (>= 3.2.0),
     Formula
-Description: This package allows estimate dynamic panels with threshold effect and endogeneity as proposed by Seo and Shin (2016).
+Description: This package allows estimating dynamic panels with threshold effect and endogeneity as proposed by Seo and Shin (2016).
 License: GPL (>= 2)
 Encoding: UTF-8
 LazyData: true

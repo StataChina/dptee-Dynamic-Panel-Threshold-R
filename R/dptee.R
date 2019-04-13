@@ -9,6 +9,9 @@ dptee =
             effects = "individual",
             ...)
   {
+    cl <- match.call()
+    print(cl)
+
     # Comp. time --------------------------------------------------------------
     start_time = Sys.time()
     # 1. Check packages needed ------------------------------------------------
@@ -18,14 +21,14 @@ dptee =
         stop("Please install ", packlist[[i]], " package.")
     }
     # 2. Check model formula and data -----------------------------------------
-    data = pdata.frame(data)
+    eq = Formula(formula)
+    data = data
     if (!inherits(eq, "Formula"))
-      stop('Need a Formula equation. See Formula package.')
+      stop("Need a Formula equation. See Formula package.")
     if (!inherits(data, "pdata.frame"))
-      stop('Need a pdata.frame objetc. See plm package.')
+      data = pdata.frame(data)
     if (is.pbalanced(data) == 0)
       stop("Only balanced panels can be used!")
-    eq = Formula(eq)
     if (length(eq)[2] < 2)
       stop("Incomplete model formulae!")
     if (terms(Formula(eq), rhs = 3)[[3]] != 0) {
@@ -34,8 +37,8 @@ dptee =
       ki = 0
     }
     P1 = gsub("\\s", "\\1", attr(terms(eq, rhs = 1), "term.labels"))
-    nP1 = unlist(strsplit(P1, "\\,|\\)| "))[2]
-    ml = max(as.numeric(unlist(strsplit(nP1, ":")))) + 2
+    nP1 = paste(unlist(strsplit(P1, "\\,|\\:|\\)| ")))
+    ml = max(suppressWarnings(as.numeric(nP1)), na.rm = T) + 2
     # 3. Extract data, variables, and parameters ------------------------------
     n = pdim(data)$nT[[1]]
     t = pdim(data)$nT[[2]]
@@ -44,6 +47,8 @@ dptee =
     model = makeMF(eq, data)
     z2 = model$mf[[1]] #covariates
     q = model$mf[[2]] #threshold
+    if (isTRUE(anyNA(q)))
+      stop("Threshold must not contain NA values.")
     q = as.vector(q)
     if (ki == 0) {
       xk = 0
@@ -55,19 +60,21 @@ dptee =
     if (effects == "twoways") {
       ki = 1
       if (xk == 0) {
-        xk = tt[, -c(1:(ml + 1))]
+        xk = tt[,-c(1:(ml + 1))]
         kxk = dimen(tt)$nc
       } else {
-        xk = cbind(xk, tt[, -c(1:(ml + 1))])
+        xk = cbind(xk, tt[,-c(1:(ml + 1))])
         kxk = dimen(tt)$nc
       }
     }
-    xx = model$mf[[4]] #add. instruments
-    y = attr(terms(Formula(eq)), "variables")[[2]]
-    y = data$y
+    iv = model$mf[[4]] #add. instruments
+    y = model$mf[[5]]
     ly = lagnmatrix(n, t, y, 1)
     dy = trimrmatrix(n, t, (y - ly), ml)
-    iv = makeIV(eq, data)
+    if (isTRUE(anyNA(iv)))
+      stop("Instruments must not contain NA values.")
+    if (isTRUE(anyNA(dy)))
+      stop("Response must not contain NA values.")
     if (con == 0) {
       z1 = z2
     } else if (con == 1) {
@@ -90,11 +97,15 @@ dptee =
         z = cbind(z2, z1 * (q > qq1[i]))
         lz = lagnmatrix(n, t, z, 1)
         dz[[i]] = trimrmatrix(n, t, (z - lz), ml)
+        if (isTRUE(anyNA(dz[[i]])))
+          stop("Covariates must not contain NA values.")
       } else if (ki == 1) {
         z =
-          cbind(z2, z1 * (q - qq1[i]) * q > qq1[i], xk)
+          cbind(z2, z1 * (q - qq1[i]) * (q > qq1[i]), xk)
         lz = lagnmatrix(n, t, z, 1)
         dz[[i]] = trimrmatrix(n, t, (z - lz), ml)
+        if (isTRUE(anyNA(dz[[i]])))
+          stop("Covariates must not contain NA values.")
       }
     }
     npar = dimen(dz[[1]])$nc
@@ -105,28 +116,28 @@ dptee =
     coefs = matrix(0, ns, (1 + npar))
     Js = colp = rep(0, ns)
     wn_A = wnst_A = 0
-    # 4. Start loop for averaging method --------------------------------------
+    # 4. Start loop for models ------------------------------------------------
     for (it in 1:ns) {
       if (it == 1) {
-        w = makeW(n, iv)
+        w1 = makeW(n, iv)
       } else{
-        w = makeW(n, iv, u = rnorm(ntu))
+        w1 = makeW(n, iv, u = rnorm(ntu))
       }
       col1 = matrix(0, qn1, (2 + npar + ntu))
       col2 = col1
       for (i in 1:qn1) {
-        gmm1 = gmm(n, dy, dz[[i]], iv, w)
-        col1[i,] = c(gmm1$s, qq1[i], gmm1$b, gmm1$resid)
+        gmm1 = gmm(n, dy, dz[[i]], iv, w1)
+        col1[i, ] = c(gmm1$s, qq1[i], gmm1$b, gmm1$resid)
       }
       ccol1 = dimen(col1)$nc
-      col1hat = col1[order(col1[, 1]),]
+      col1hat = col1[order(col1[, 1]), ]
       u1 = col1hat[1, npar1:ccol1]
-      w = makeW(n, iv, u = u1)
+      w2 = makeW(n, iv, u = u1)
       wnst = matrix(0, qn1, jj)
       wn = matrix(0, qn1, 1)
       for (i in 1:qn1) {
-        gmm2 = gmm(n, dy, dz[[i]], iv, w)
-        col2[i,] = c(gmm2$s, qq1[i], gmm2$b, gmm2$resid)
+        gmm2 = gmm(n, dy, dz[[i]], iv, w2)
+        col2[i, ] = c(gmm2$s, qq1[i], gmm2$b, gmm2$resid)
         #-- supW statistic
         gmm2b = gmm2$b
         if (ki == 0) {
@@ -136,7 +147,7 @@ dptee =
         } else if (ki == 1) {
           p1 = cbind(cbind(matrix(0, k1, k2)), diag(k1))
           p1b = p1 %*% gmm2b[-(k + 1):-(k + kxk)]
-          ivdz = crossprod(iv, dz[[i]][,-(k + 1):-(k + kxk)]) / n
+          ivdz = crossprod(iv, dz[[i]][, -(k + 1):-(k + kxk)]) / n
         }
         u2 = col1[i, npar1:ccol1]
         iwi = makeW(n, iv, u = u2)
@@ -158,12 +169,12 @@ dptee =
         mt = ivdz %*% ivdzi %*% p1idti %*% tcrossprod(ivdzi, ivdz)
         for (j in 1:jj) {
           wnst[i, j] =
-            crossprod(zst[j,], ciwi) %*% mt %*% crossprod(ciwi, zst[j,])
+            crossprod(zst[j, ], ciwi) %*% mt %*% crossprod(ciwi, zst[j, ])
         }
       }
-      col2hat = col2[order(col2[, 1]),]
+      col2hat = col2[order(col2[, 1]), ]
       dehat = col2hat[1, npar1:dimen(col2hat)$nc]
-      coefs[it,] = col2hat[1, 2:(2 + npar)]
+      coefs[it, ] = col2hat[1, 2:(2 + npar)]
       Js[it] = n * col2hat[1, 1]
       # LinT1 = colp[1]
       colp[it] =
@@ -173,7 +184,7 @@ dptee =
       wn_A = wn_A + wn
     }
     # 5. Extract and format results -------------------------------------------
-    coef1 = coefs[1,]
+    coef1 = coefs[1, ]
     coef = colMeans(coefs)
     Jhat1 = Js[1]
     Jhat = mean(Js)
@@ -223,7 +234,8 @@ dptee =
         "LinT1" = colp[1],
         "mom" = mom,
         "con" = con,
-        "effects" = effects
+        "effects" = effects,
+        "call" = cl
       )
     class(dptee) = "dptee"
     return(dptee)

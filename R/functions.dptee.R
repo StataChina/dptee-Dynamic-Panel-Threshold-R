@@ -1,5 +1,5 @@
 #' dptee internal functions
-#' @description {Functions are: (1) lagnmatrix, (2) trimrmatrix, (3) dimen, (4) gmm, (5) estimate, (6) makeIV, (7) makeMF, and (8) makeW.}
+#' @description {Functions are: (1) lagnmatrix, (2) trimrmatrix, (3) dimen, (4) gmm, (5) estimate, (6) makeMF, and (7) makeW.}
 #' @rdname functions.dptee
 #' @aliases functions
 #' @keywords internal
@@ -19,12 +19,12 @@ lagnmatrix = function(n, t, x, p) {
   lx = matrix(NA, nt, k)
   if (t == p) {
     i1 = i2 = c(outer(c(t:t), seq(0, nt - t, t), `+`))
-    lx[i2, ] = x[i1,]
+    lx[i2,] = x[i1, ]
     return(lx)
   } else {
     i1 = c(outer(c(1:(t - p)), seq(0, nt - t, t), `+`))
     i2 = c(outer(c((p + 1):t), seq(0, nt - t, t), `+`))
-    lx[i2, ] = x[i1,]
+    lx[i2,] = x[i1, ]
     return(lx)
   }
 }
@@ -37,7 +37,7 @@ lagnmatrix = function(n, t, x, p) {
 trimrmatrix  = function(n, t, x, p) {
   as.matrix(x)
   idx = -c(outer(c(1:p), seq(0, (n * t), t), `+`))
-  y = x[idx,]
+  y = x[idx, ]
   return(y)
 }
 
@@ -64,8 +64,8 @@ dimen = function(x) {
 #' @keywords internal
 #' @export
 gmm = function(n, y, x, iv, w) {
-  ivy = crossprod(iv, y) / n # Ok
-  ivx = crossprod(iv, x) / n # Ok
+  ivy = crossprod(iv, y) / n
+  ivx = crossprod(iv, x) / n
   ivxw = crossprod(ivx, w)
   if (min(eigen(ivxw %*% ivx)$values) < 1e-8) {
     b = ginv(ivxw %*% ivx) %*% ivxw %*% ivy
@@ -101,7 +101,7 @@ estimate =
            xk,
            kxk,
            effects) {
-    if (terms(Formula(eq), rhs = 3)[[3]] == 0 & effects == "individual")
+    if (terms(eq, rhs = 3)[[3]] == 0 & effects == "individual")
       ki = 0
     else
       ki = 1
@@ -122,9 +122,9 @@ estimate =
     }
     prop = mean(q > th)
     if (ki == 0) {
-      zU = cbind(z2, z1 * q > th)
+      zU = cbind(z2, z1 * (q > th))
     } else if (ki == 1) {
-      zU = cbind(z2, z1 * q > th, xk)
+      zU = cbind(z2, z1 * (q - th) * (q > th), xk)
     }
     lzU = lagnmatrix(n, t, zU, 1)
     dzU = trimrmatrix(n, t, cbind(zU - lzU), ml)
@@ -150,13 +150,13 @@ estimate =
       p1 = cbind(id, 0, id)
     }
     if (ki == 0) {
-      sdL = sqrt(diag(p1 %*% (vU[-1, -1]) %*% t(p1)))
+      sdL = sqrt(diag(p1 %*% (vU[-1,-1]) %*% t(p1)))
       b = c(th, bU, bD, bL)
       sd = c(sdT, sdU, sdD, sdL)
     } else if (ki == 1) {
       sdK = sU[(k + 2):kt]
       sdL =
-        sqrt(diag(p1 %*% (vU[-c(1, (k + 2):kt), -c(1, (k + 2):kt)]) %*% t(p1)))
+        sqrt(diag(p1 %*% (vU[-c(1, (k + 2):kt),-c(1, (k + 2):kt)]) %*% t(p1)))
       b = c(th, bU, bD, bL, bK)
       sd = c(sdT, sdU, sdD, sdL, sdK)
     }
@@ -202,131 +202,17 @@ estimate =
 #' @aliases functions
 #' @keywords internal
 #' @export
-makeIV = function(eq, data) {
-  if (!inherits(eq, "Formula"))
-    stop('Need a Formula equation. See Formula package.')
-  if (!inherits(data, "pdata.frame"))
-    stop('Need a pdata.frame objetc. See plm package.')
-  n = pdim(data)$nT[[1]]
-  t = pdim(data)$nT[[2]]
-  nt = n * t
-  P1 = attr(terms(eq, rhs = 1), "term.labels")
-  P4 = attr(terms(eq, rhs = 4), "term.labels")
-  if (attr(terms(eq), "intercept")) {
-    data = cbind(data, 1)
-    colnames(data)[ncol(data)] = "constant"
-    P4 = c("constant", P4)
-  }
-  if (identical(P1, character(0)) | identical(P4, character(0)))
-    stop('Incorrect model formulae.')
-  lP1 = length(P1)
-  lP4 = length(P4)
-  nP1 = gsub("\\s", "\\1", P1)
-  nP4 = gsub("\\s", "\\1", P4)
-  ln1 = ln4 = list()
-  vr4 = rep(NA, lP4)
-  for (i in 1:lP1) {
-    ls1 = unlist(strsplit(nP1[i], "\\,|\\)| "))[2]
-    ln1[[i]] = as.numeric(unlist(strsplit(ls1, ":")))
-  }
-  l0 = max(unlist(ln1), na.rm = T) + 2   #lag inicial (l1); Sempre o menor de P1 + 1
-  id = cbind(rep(1, (t - l0)), c(0:(t - l0 - 1)), c(1:(t - l0)))
-  xx = matrix(0, n * (t - l0), lP4)
-  x2 = list()
-  dx2 = 0
-  for (i in 1:lP4) {
-    ls4 = unlist(strsplit(nP4[i], "\\,|\\)| "))[2]
-    ln4[[i]] = as.numeric(unlist(strsplit(ls4, ":")))
-    vr4 = gsub("|lag|[[:punct:]]", "", unlist(strsplit(nP4[i], "\\,|\\)| "))[1])
-    xl = lagnmatrix(n, t, data[, vr4], l0)
-    xt = trimrmatrix(n, t, xl, l0)
-    xi = lapply(seq((t - l0), nt, by = (t - l0)), function(j)
-      xt[(j - (t - l0) + 1):j])
-    if (is.na(ln4[[i]][1]))
-      ln4[[i]][1] = 0
-    if (ln4[[i]][1] <= l0) {
-      minl = 1
-    } else {
-      minl = ln4[[i]][1] - l0
-    }
-    if (is.na(ln4[[i]][2]))
-      ln4[[i]][2] = minl
-    if (ln4[[i]][2] <= l0) {
-      maxl = 1
-    } else {
-      maxl = ln4[[i]][2] - l0
-    }
-    x1 = list()
-    for (ii in 1:n) {
-      x0 = list()
-      for (it in 1:(t - l0)) {
-        if (minl != maxl & it < minl) {
-          x0[[it]] = xi[[ii]][1]
-        } else if (minl != maxl & it >= minl & it <= maxl) {
-          x0[[it]] = xi[[ii]][1:(it - minl + 1)]
-        } else if (minl != maxl & it > maxl) {
-          x0[[it]] = xi[[ii]][(it - minl):(it - minl + 1)]
-        } else if (minl == maxl) {
-          x0[[it]] = xi[[ii]][it]
-        }
-      }
-      x1[[ii]] = do.call(rbind, lapply(x0, `[`, seq_len(max(
-        sapply(x0, length)
-      ))))
-    }
-    x2[[i]] = do.call(rbind, x1)
-    if (ncol(x2[[i]]) > dx2)
-      dx2 = ncol(x2[[i]])
-  }
-  x = NULL
-  for (i in 1:dx2) {
-    for (j in 1:length(x2)) {
-      exc = tryCatch(
-        x2[[j]][, i],
-        error = function(e)
-          NULL
-      )
-      if (!is.null(exc))
-        x = cbind(x, x2[[j]][, i])
-    }
-  }
-  mm = length(which(!is.na(x[1:(t - l0),])))
-  sx = x[1:(t - l0),]
-  si = matrix(1, t - l0, 2)
-  si[1, 2] = length(na.omit(sx[1,]))
-  for (i1 in 2:(t - l0)) {
-    si[i1,]  = c(si[i1 - 1, 2] + 1, length(na.omit(sx[i1,])) + si[i1 - 1, 2])
-  }
-  ixi = lapply(seq((t - l0), n * (t - l0), by = (t - l0)), function(i0)
-    x[(i0 - (t - l0) + 1):i0, ])
-  iv = list()
-  for (i2 in 1:n) {
-    ivi = matrix(0, (t - l0), mm)
-    for (t2 in 1:(t - l0)) {
-      ivi[t2, c(si[t2, 1]:si[t2, 2])] = c(na.omit(ixi[[i2]][t2,]))
-      iv[[i2]] = ivi
-    }
-  }
-  iv = do.call(rbind, iv)
-  return(iv)
-}
-
-#' @rdname functions.dptee
-#' @description Function (7)
-#' @aliases functions
-#' @keywords internal
-#' @export
 makeMF = function(eq, data) {
   if (!inherits(eq, "Formula"))
-    stop('Need a Formula equation. See Formula package.')
+    stop('Need a Formula object. See Formula package.')
   if (!inherits(data, "pdata.frame"))
     stop('Need a pdata.frame objetc. See plm package.')
   n = pdim(data)$nT[[1]]
   t = pdim(data)$nT[[2]]
   nt = n * t
   mf = list()
-  mn = c('model', 'threshold', 'kink', 'addinst')
-  for (k in 1:length(eq)[2]) {
+  # Variables ---------------------------------------------------------------
+  for (k in 1:3) {
     P = attr(terms(eq, rhs = k), "term.labels")
     if (!identical(P, character(0))) {
       nP = gsub("\\s", "\\1", P)
@@ -347,7 +233,8 @@ makeMF = function(eq, data) {
           vr = tvr[1]
           ln = tvr[length(tvr)]
           il = 0
-        } else if (length(tvr) > 1 & substr(tvr[1], 1, 3) == "log") {
+        } else if (length(tvr) > 1 &
+                   substr(tvr[1], 1, 3) == "log") {
           vr = substr(tvr[1], 4, nchar(tvr[1]))
           ln = tvr[length(tvr)]
           il = 1
@@ -408,22 +295,123 @@ makeMF = function(eq, data) {
     } else {
       tmp = NULL
     }
-    if (!is.null(tmp)) {
-      names(tmp) = mn[k]
-    }
-    if (k == 4 & attr(terms(Formula(eq), rhs = 4), "intercept")) {
-      con = matrix(1, nt, 1)
-      colnames(con) = 'constant'
-      mf[[k]] = cbind(con, tmp)
+    mf[[k]] = tmp
+  }
+  #--------------------------------------------------------------------------
+  P1 = attr(terms(eq, rhs = 1), "term.labels")
+  P4 = attr(terms(eq, rhs = 4), "term.labels")
+  lP1 = length(P1)
+  lP4 = length(P4)
+  nP1 = gsub("\\s", "\\1", P1)
+  nP4 = gsub("\\s", "\\1", P4)
+  ln1 = ln4 = list()
+  vr4 = rep(NA, lP4)
+  for (i in 1:lP1) {
+    ls1 = unlist(strsplit(nP1[i], "\\,|\\)| "))
+    ln1[[i]] = suppressWarnings(as.numeric(unlist(strsplit(ls1[length(ls1)], ":"))))
+  }
+  l0 = max(unlist(ln1), na.rm = T) + 2   #lag inicial (l1); Sempre o menor de P1 + 1
+  xx = matrix(0, n * (t - l0), lP4)
+  x2 = list()
+  dx2 = 0
+  # Matrix of instruments ---------------------------------------------------
+  for (i in 1:lP4) {
+    l4 = unlist(strsplit(nP4[i], "\\,|\\)| "))
+    ls4 = l4[length(l4)]
+    ln4[[i]] = as.numeric(unlist(strsplit(ls4, ":")))
+    vr4 = gsub("\\lag|\\(|", "", unlist(strsplit(nP4[i], "\\,|\\)| "))[1])
+    if (substr(vr4, 1, 3) == "log")
+      xl = lagnmatrix(n, t, log(data[, substr(vr4, 4, 100L)]), l0)
+    else if (substr(vr4, 1, 3) != "log")
+      xl = lagnmatrix(n, t, data[, substr(vr4, 1, 100L)], l0)
+    xt = trimrmatrix(n, t, xl, l0)
+    xi = lapply(seq((t - l0), nt, by = (t - l0)), function(j)
+      xt[(j - (t - l0) + 1):j])
+    if (is.na(ln4[[i]][1]))
+      ln4[[i]][1] = 0
+    if (ln4[[i]][1] <= l0) {
+      minl = 1
     } else {
-      mf[[k]] = tmp
+      minl = ln4[[i]][1] - l0
+    }
+    if (is.na(ln4[[i]][2]))
+      ln4[[i]][2] = minl
+    if (ln4[[i]][2] <= l0) {
+      maxl = 1
+    } else {
+      maxl = ln4[[i]][2] - l0
+    }
+    x1 = list()
+    for (ii in 1:n) {
+      x0 = list()
+      for (it in 1:(t - l0)) {
+        if (minl != maxl & it < minl) {
+          x0[[it]] = xi[[ii]][1]
+        } else if (minl != maxl & it >= minl & it <= maxl) {
+          x0[[it]] = xi[[ii]][1:(it - minl + 1)]
+        } else if (minl != maxl & it > maxl) {
+          x0[[it]] = xi[[ii]][(it - minl):(it - minl + 1)]
+        } else if (minl == maxl) {
+          x0[[it]] = xi[[ii]][it]
+        }
+      }
+      x1[[ii]] = do.call(rbind, lapply(x0, `[`, seq_len(max(
+        sapply(x0, length)
+      ))))
+    }
+    x2[[i]] = do.call(rbind, x1)
+    if (ncol(x2[[i]]) > dx2)
+      dx2 = ncol(x2[[i]])
+  }
+  if (attr(terms(eq, rhs = 4), "intercept"))
+    x = 1
+  else
+    x = NULL
+  for (i in 1:dx2) {
+    for (j in 1:length(x2)) {
+      exc = tryCatch(
+        x2[[j]][, i],
+        error = function(e)
+          NULL
+      )
+      if (!is.null(exc))
+        x = cbind(x, x2[[j]][, i])
     }
   }
+  mm = length(which(!is.na(x[1:(t - l0), ])))
+  sx = x[1:(t - l0), ]
+  si = matrix(1, t - l0, 2)
+  si[1, 2] = length(na.omit(sx[1, ]))
+  for (i1 in 2:(t - l0)) {
+    si[i1, ]  = c(si[i1 - 1, 2] + 1, length(na.omit(sx[i1, ])) + si[i1 - 1, 2])
+  }
+  ixi = lapply(seq((t - l0), n * (t - l0), by = (t - l0)), function(i0)
+    x[(i0 - (t - l0) + 1):i0,])
+  iv = list()
+  for (i2 in 1:n) {
+    ivi = matrix(0, (t - l0), mm)
+    for (t2 in 1:(t - l0)) {
+      ivi[t2, c(si[t2, 1]:si[t2, 2])] = c(na.omit(ixi[[i2]][t2, ]))
+      iv[[i2]] = ivi
+    }
+  }
+  iv = do.call(rbind, iv)
+  mf[[4]] = iv
+  # Response ----------------------------------------------------------------
+  yn = unlist(attr(eq, "lhs")[[1]])
+  vr5 = gsub("\\lag|\\(|", "", yn)
+  if (vr5[1] == "log"){
+    y = log(data[, vr5[2]])
+  } else if (substr(yn, 1, 3) != "log") {
+    y = data[, vr5]
+  }
+  #--------------------------------------------------------------------------
+  mf[[5]] = y
   return(list('mf' = mf))
 }
 
 #' @rdname functions.dptee
-#' @description Function (8)
+#' @description Function (7)
 #' @aliases functions
 #' @keywords internal
 #' @export
@@ -435,7 +423,7 @@ makeW = function(n, iv, u = NULL) {
   div = iv - liv
   snt = seq(1, nt, by = t)
   w1 = lapply(snt, function(i)
-    iv[i:(i + t - 1), ])
+    iv[i:(i + t - 1),])
   u1 = lapply(snt, function(i)
     u[i:(i + t - 1)])
 
@@ -443,13 +431,13 @@ makeW = function(n, iv, u = NULL) {
     for (i in 1:n) {
       for (j in 1:(t + 1)) {
         w0 = cbind(0, rbind(0, w1[[i]], 0), 0)
-        wi = w0[j,] - w0[j + 1,]
+        wi = w0[j, ] - w0[j + 1, ]
         v0 = v0 + tcrossprod(wi, wi)
       }
     }
-    v = (v0[-c(1, nrow(v0)), -c(1, ncol(v0))]) / n
+    v = (v0[-c(1, nrow(v0)),-c(1, ncol(v0))]) / n
     if (min(eigen(v)$values) < 1e-8) {
-      # w = ginv(v)
+      w = ginv(v)
     } else {
       w = solve(v)
       return(w)
