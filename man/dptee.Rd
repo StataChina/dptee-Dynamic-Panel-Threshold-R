@@ -8,7 +8,7 @@ Model estimating
 Function to estimate a Dynamic Panels with Threshold Effect and Endogeneity
 }
 \usage{
-dptee(formula, data, con=0, trim=0.1, qn=20, ns=20, jj=20, effects, ...)
+dptee(formula, data, con=0, trim=0.15, qn=200, ns=300, jj=1000, model, effects, normal.inst, display.dummies,...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -19,7 +19,10 @@ dptee(formula, data, con=0, trim=0.1, qn=20, ns=20, jj=20, effects, ...)
   \item{qn}{number of quantiles to examine,}
   \item{ns}{iter num in averaging (1st uses analytic formula),}
   \item{jj}{iteration for linearity test p-value,}
-  \item{effects}{individual or twoqays,}
+  \item{model}{one of 'analytic' (default) or 'averaging',}
+  \item{effects}{individual or twoways,}
+  \item{normal.inst}{if TRUE, normal instruments are used,}
+  \item{display.dummies}{display time dummies in summary,}
   \item{...}{futher arguments.}
 }
 %\details{

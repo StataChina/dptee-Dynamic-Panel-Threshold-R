@@ -100,85 +100,129 @@ estimate =
            con,
            xk,
            kxk,
-           effects) {
-    if (terms(eq, rhs = 3)[[3]] == 0 & effects == "individual")
-      ki = 0
-    else
-      ki = 1
-    th = coef[1]
+           effects,
+           tt,
+           ktt,
+           ki,
+           display.dummies) {
     k1 = dimen(z1)$nc
     k2 = dimen(z2)$nc
     k = k1 + k2
     kt = length(coef)
+    id = diag(k2)
+    bTh = coef[1]
     bU = coef[2:(k2 + 1)]
     bD = coef[(k2 + 2):(k + 1)]
+    prop = mean(q > bTh)
     if (con == 0) {
+      p1 = cbind(id, id)
       bL = bU + bD
+      nP = c(
+        paste0("Threshold(", names(bTh), ")"),
+        paste0(names(bU), "(-)"),
+        paste0(names(bD), "(d)"),
+        paste0(names(bU), "(+)")
+      )
     } else if (con == 1) {
+      p1 = cbind(id, 0, id)
       bL = bU + bD[-1]
+      nP = c(
+        paste0("Threshold(", names(bTh), ")"),
+        paste0(names(bU), "(-)"),
+        paste0(names(bD), "(d)"),
+        paste0(names(bU), "(+)")
+      )
     }
-    if (ki == 1) {
+    if (effects == "individual" & ki == 0) {
+      bK = bT = NULL
+      zU = cbind(z2, z1 * (q > bTh))
+      nPk = NULL
+    } else if (effects == "individual" & ki == 1) {
       bK = coef[(k + 2):kt]
-    }
-    prop = mean(q > th)
-    if (ki == 0) {
-      zU = cbind(z2, z1 * (q > th))
-    } else if (ki == 1) {
-      zU = cbind(z2, z1 * (q - th) * (q > th), xk)
+      nPk = names(coef[(k + 2):kt])
+      bT = NULL
+      zU = cbind(z2, z1 * (q - bTh) * (q > bTh), xk)
+    } else if (effects == "twoways" & ki == 0) {
+      bL = bU + bD
+      bK = NULL
+      nPk = NULL
+      bT = coef[((kt + 1) - ktt):kt]
+      names(bT) = colnames(tt)
+      zU = cbind(z2, z1 * (q - bTh) * (q > bTh), tt)
+    } else if (effects == "twoways" & ki == 1) {
+      bL = bU + bD
+      bK = coef[(k + 2):(k + kxk + 1)]
+      nPk = names(coef[(k + 2):(k + kxk + 1)])
+      bT = coef[((kt + 1) - ktt):kt]
+      names(bT) = colnames(tt)
+      zU = cbind(z2, z1 * (q - bTh) * (q > bTh), xk, tt)
     }
     lzU = lagnmatrix(n, t, zU, 1)
     dzU = trimrmatrix(n, t, cbind(zU - lzU), ml)
     u = dy - dzU %*% coef[-1]
     w = makeW(n, iv, u = u)
-    h = 1.06 * sd(q) * n ^ (-0.2)
-    kn = dnorm((th - q) / h)
+    h = 1.06 * sd(q, na.rm = T) * n ^ (-0.2)
+    kn = dnorm((bTh - q) / h)
     s = z1 * as.vector(kn)
-    ls = s - lagnmatrix(n, t, s, 1)
-    ds = trimrmatrix(n, t, ls, ml)
+    ls = lagnmatrix(n, t, s, 1)
+    ds = trimrmatrix(n, t, (s - ls), ml)
     GbU = (crossprod(-iv, dzU)) / n
     Gr = (crossprod(-iv, ds) / (n * h)) %*% bD
     GU = cbind(Gr, GbU)
     vU = solve(crossprod(GU, w) %*% GU) / n
     sU = sqrt(diag(vU))
-    sdT = sU[1]
+    sdTh = sU[1]
     sdU = sU[2:(k2 + 1)]
     sdD = sU[(k2 + 2):(k + 1)]
-    id = diag(k2)
-    if (con == 0) {
-      p1 = cbind(id, id)
-    } else if (con == 1) {
-      p1 = cbind(id, 0, id)
-    }
-    if (ki == 0) {
-      sdL = sqrt(diag(p1 %*% (vU[-1,-1]) %*% t(p1)))
-      b = c(th, bU, bD, bL)
-      sd = c(sdT, sdU, sdD, sdL)
-    } else if (ki == 1) {
+    sdL = sqrt(diag(p1 %*% vU[c(2:(k + 1)), c(2:(k + 1))] %*% t(p1)))
+    if (effects == "individual" & ki == 0) {
+      sdK = sdT = NULL
+      wtc = as.numeric(crossprod(coef[-1], crossprod(solve(vU[-1, -1]), coef[-1])))
+      dfwtc = length(coef[-1])
+      pwtc = pchisq(wtc, df = dfwtc, lower.tail = FALSE)
+      wtd = dfwtd = pwtd = NULL
+    } else if (effects == "individual" & ki == 1) {
       sdK = sU[(k + 2):kt]
-      sdL =
-        sqrt(diag(p1 %*% (vU[-c(1, (k + 2):kt),-c(1, (k + 2):kt)]) %*% t(p1)))
-      b = c(th, bU, bD, bL, bK)
-      sd = c(sdT, sdU, sdD, sdL, sdK)
+      sdT = NULL
+      wtc = as.numeric(crossprod(coef[-1], crossprod(solve(vU[-1, -1]), coef[-1])))
+      dfwtc = length(coef[-1])
+      pwtc = pchisq(wtc, df = dfwtc, lower.tail = FALSE)
+      wtd = dfwtd = pwtd = NULL
+    } else if (effects == "twoways" & ki == 0) {
+      sdK = NULL
+      sdT = sU[(k + 2):kt]
+      Rc = c(2:(k + 1))
+      wtc = as.numeric(crossprod(coef[Rc], crossprod(solve(vU[Rc, Rc]), coef[Rc])))
+      dfwtc = length(Rc)
+      pwtc = pchisq(wtc, df = dfwtc, lower.tail = FALSE)
+      Rd = c((kt - ktt + 1):kt)
+      wtd = as.numeric(crossprod(coef[Rd], crossprod(solve(vU[Rd, Rd]), coef[Rd])))
+      dfwtd = length(Rd)
+      pwtd = pchisq(wtd, df = dfwtd, lower.tail = FALSE)
+    } else if (effects == "twoways" & ki == 1) {
+      sdK = sU[(k + 2):(kt - ktt)]
+      sdT = sU[((kt - ktt) + 1):kt]
+      Rc = c(2:((k + 1) + kxk))
+      wtc = as.numeric(crossprod(coef[Rc], crossprod(solve(vU[Rc, Rc]), coef[Rc])))
+      dfwtc = length(Rc)
+      pwtc = pchisq(wtc, df = dfwtc, lower.tail = FALSE)
+      Rd = c((kt - ktt + 1):kt)
+      wtd = as.numeric(crossprod(coef[Rd], crossprod(solve(vU[Rd, Rd]), coef[Rd])))
+      dfwtd = length(Rd)
+      pwtd = pchisq(wtd, df = dfwtd, lower.tail = FALSE)
     }
     ivu = crossprod(iv, u)
     sa = as.numeric(crossprod(ivu, w) %*% ivu) / n
-    if (effects == "individual") {
-      wtc = as.numeric(crossprod(coef, crossprod(solve(vU), coef)))
-      dfwtc = length(coef)
-      pwtc = pchisq(wtc, df = kt, lower.tail = FALSE)
-      wtd = NULL
-      dfwtd = NULL
-      pwtd = NULL
+    if (display.dummies == T){
+      b = c(bTh, bU, bD, bL, bK, bT)
+      names(b) = (c(nP, nPk, colnames(tt)))
+      sd = c(sdTh, sdU, sdD, sdL, sdK, sdT)
     } else {
-      Rc = -c((kt - (t - ml - 2)):kt)
-      wtc = as.numeric(crossprod(coef[Rc], crossprod(solve(vU[Rc, Rc]), coef[Rc])))
-      dfwtc = length(Rc)
-      pwtc = pchisq(wtc, df = length(Rc), lower.tail = FALSE)
-      Rd = c((kt - (t - ml - 2)):kt)
-      wtd = as.numeric(crossprod(coef[Rd], crossprod(solve(vU[Rd, Rd]), coef[Rd])))
-      dfwtd = length(Rd)
-      pwtd = pchisq(wtd, df = length(Rd), lower.tail = FALSE)
+      b = c(bTh, bU, bD, bL, bK)
+      names(b) = (c(nP, nPk))
+      sd = c(sdTh, sdU, sdD, sdL, sdK)
     }
+    names(sd) = (c(nP, nPk))
     estim =
       list(
         "b" = b,
@@ -202,7 +246,7 @@ estimate =
 #' @aliases functions
 #' @keywords internal
 #' @export
-makeMF = function(eq, data) {
+makeMF = function(eq, data, effects, normal.inst) {
   if (!inherits(eq, "Formula"))
     stop('Need a Formula object. See Formula package.')
   if (!inherits(data, "pdata.frame"))
@@ -310,7 +354,7 @@ makeMF = function(eq, data) {
     ls1 = unlist(strsplit(nP1[i], "\\,|\\)| "))
     ln1[[i]] = suppressWarnings(as.numeric(unlist(strsplit(ls1[length(ls1)], ":"))))
   }
-  l0 = max(unlist(ln1), na.rm = T) + 2   #lag inicial (l1); Sempre o menor de P1 + 1
+  l0 = max(unlist(ln1), na.rm = T) + 2   #Initial lag (l1)
   xx = matrix(0, n * (t - l0), lP4)
   x2 = list()
   dx2 = 0
@@ -363,7 +407,7 @@ makeMF = function(eq, data) {
     if (ncol(x2[[i]]) > dx2)
       dx2 = ncol(x2[[i]])
   }
-  if (attr(terms(eq, rhs = 4), "intercept"))
+  if (attr(terms(eq, rhs = 4), "intercept") & effects == "individual")
     x = 1
   else
     x = NULL
@@ -381,26 +425,58 @@ makeMF = function(eq, data) {
   mm = length(which(!is.na(x[1:(t - l0), ])))
   sx = x[1:(t - l0), ]
   si = matrix(1, t - l0, 2)
-  si[1, 2] = length(na.omit(sx[1, ]))
-  for (i1 in 2:(t - l0)) {
-    si[i1, ]  = c(si[i1 - 1, 2] + 1, length(na.omit(sx[i1, ])) + si[i1 - 1, 2])
-  }
-  ixi = lapply(seq((t - l0), n * (t - l0), by = (t - l0)), function(i0)
-    x[(i0 - (t - l0) + 1):i0,])
-  iv = list()
-  for (i2 in 1:n) {
-    ivi = matrix(0, (t - l0), mm)
-    for (t2 in 1:(t - l0)) {
-      ivi[t2, c(si[t2, 1]:si[t2, 2])] = c(na.omit(ixi[[i2]][t2, ]))
-      iv[[i2]] = ivi
+  # Only way? ---------------------------------------------------------------
+  if (dimen(sx)$nc == 1){
+    si[1, 2] = length(na.omit(sx[1]))
+    for (i1 in 2:(t - l0)) {
+      si[i1, ]  = c(si[i1 - 1, 2] + 1, length(na.omit(sx[i1])) + si[i1 - 1, 2])
+    }
+    ixi = lapply(seq((t - l0), n * (t - l0), by = (t - l0)), function(i0) x[(i0 - (t - l0) + 1):i0,])
+    iv = list()
+    for (i2 in 1:n) {
+      ivi = matrix(0, (t - l0), mm)
+      for (t2 in 1:(t - l0)) {
+        ivi[t2, c(si[t2, 1]:si[t2, 2])] = c(na.omit(ixi[[i2]][t2]))
+        iv[[i2]] = ivi
+      }
+    }
+  } else {
+    si[1, 2] = length(na.omit(sx[1, ]))
+    for (i1 in 2:(t - l0)) {
+      si[i1, ]  = c(si[i1 - 1, 2] + 1, length(na.omit(sx[i1, ])) + si[i1 - 1, 2])
+    }
+    ixi = lapply(seq((t - l0), n * (t - l0), by = (t - l0)), function(i0) x[(i0 - (t - l0) + 1):i0,])
+    iv = list()
+    for (i2 in 1:n) {
+      ivi = matrix(0, (t - l0), mm)
+      for (t2 in 1:(t - l0)) {
+        ivi[t2, c(si[t2, 1]:si[t2, 2])] = c(na.omit(ixi[[i2]][t2, ]))
+        iv[[i2]] = ivi
+      }
     }
   }
+  # -------------------------------------------------------------------------
   iv = do.call(rbind, iv)
-  mf[[4]] = iv
+  niv = NULL
+  for (i in 1:length(nP1)) {
+    if (!any(gsub("\\lag\\(|\\,.*", "", nP4) == gsub("\\lag\\(|\\,.*", "", nP1[i]))) {
+      nPI = gsub("\\lag\\(|\\,.*", "", nP1[i])
+      if (substr(nPI, 1, 3) == "log")
+        niv[[i]] = lagnmatrix(n, t, log(data[, gsub("\\log\\(|\\)|", "", nPI)]), l0)
+      else
+        niv[[i]] = lagnmatrix(n, t, data[, gsub("\\log\\(|\\)|", "", nPI)], l0)
+    }
+  }
+  niv = do.call(cbind, niv)
+  niv = trimrmatrix(n, t, niv, l0)
+  if (normal.inst == T)
+    mf[[4]] = cbind(iv, niv)
+  else
+    mf[[4]] = iv
   # Response ----------------------------------------------------------------
   yn = unlist(attr(eq, "lhs")[[1]])
   vr5 = gsub("\\lag|\\(|", "", yn)
-  if (vr5[1] == "log"){
+  if (vr5[1] == "log") {
     y = log(data[, vr5[2]])
   } else if (substr(yn, 1, 3) != "log") {
     y = data[, vr5]
@@ -426,7 +502,6 @@ makeW = function(n, iv, u = NULL) {
     iv[i:(i + t - 1),])
   u1 = lapply(snt, function(i)
     u[i:(i + t - 1)])
-
   if (is.null(u)) {
     for (i in 1:n) {
       for (j in 1:(t + 1)) {

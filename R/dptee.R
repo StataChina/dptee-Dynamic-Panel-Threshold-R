@@ -2,16 +2,17 @@ dptee =
   function (formula,
             data,
             con = 0,
-            trim = 0.1,
-            qn = 20,
-            ns = 20,
-            jj = 20,
+            trim = 0.15,
+            qn = 200,
+            ns = 300,
+            jj = 1000,
+            model = "analytical",
             effects = "individual",
+            normal.inst = T,
+            display.dummies = F,
             ...)
   {
     cl <- match.call()
-    print(cl)
-
     # Comp. time --------------------------------------------------------------
     start_time = Sys.time()
     # 1. Check packages needed ------------------------------------------------
@@ -31,10 +32,10 @@ dptee =
       stop("Only balanced panels can be used!")
     if (length(eq)[2] < 2)
       stop("Incomplete model formulae!")
-    if (terms(Formula(eq), rhs = 3)[[3]] != 0) {
-      ki = 1
-    } else{
+    if (terms(eq, rhs = 3)[[3]] == 0) {
       ki = 0
+    } else{
+      ki = 1
     }
     P1 = gsub("\\s", "\\1", attr(terms(eq, rhs = 1), "term.labels"))
     nP1 = paste(unlist(strsplit(P1, "\\,|\\:|\\)| ")))
@@ -43,42 +44,29 @@ dptee =
     n = pdim(data)$nT[[1]]
     t = pdim(data)$nT[[2]]
     nt = n * t
-    tt = table(1:nt, factor(rep(1:t, n)))
-    model = makeMF(eq, data)
-    z2 = model$mf[[1]] #covariates
-    q = model$mf[[2]] #threshold
-    if (isTRUE(anyNA(q)))
-      stop("Threshold must not contain NA values.")
-    q = as.vector(q)
-    if (ki == 0) {
-      xk = 0
-      kxk = 0
-    } else if (ki == 1) {
-      xk = model$mf[[3]] # kink vars.
-      kxk = dimen(xk)$nc
-    }
     if (effects == "twoways") {
-      ki = 1
-      if (xk == 0) {
-        xk = tt[,-c(1:(ml + 1))]
-        kxk = dimen(tt)$nc
-      } else {
-        xk = cbind(xk, tt[,-c(1:(ml + 1))])
-        kxk = dimen(tt)$nc
-      }
+      tt = table(1:nt, factor(rep(1:t, n)))
+      tt = tt[,-c(1:(ml + 1))]
+      colnames(tt) = paste0("D", c(1:ncol(tt)))
+    } else {
+      tt = NULL
     }
-    iv = model$mf[[4]] #add. instruments
-    y = model$mf[[5]]
+    mf = makeMF(eq, data, effects, normal.inst = normal.inst)
+    z2 = mf$mf[[1]] #covariates
+    q = as.vector(mf$mf[[2]]) #threshold
+    iv = mf$mf[[4]] #add. instruments
+    if (effects == "twoways")
+      iv = cbind(iv, trimrmatrix(n, t, tt, ml))
+    y = mf$mf[[5]]
     ly = lagnmatrix(n, t, y, 1)
     dy = trimrmatrix(n, t, (y - ly), ml)
-    if (isTRUE(anyNA(iv)))
-      stop("Instruments must not contain NA values.")
-    if (isTRUE(anyNA(dy)))
-      stop("Response must not contain NA values.")
+    if (isTRUE(anyNA(iv)) | isTRUE(anyNA(dy)))
+      stop("Data must not contain NA values.")
     if (con == 0) {
       z1 = z2
     } else if (con == 1) {
-      z1 = cbind(z2, 1)
+      z1 = cbind(1, z2)
+      colnames(z1) = c("constant", colnames(z2))
     } else {
       stop("Choose a model with or without constant.")
     }
@@ -89,27 +77,52 @@ dptee =
     k = k1 + k2
     qq1 =
       quantile(unique(q),  probs = seq(trim, (1 - trim), by = (1 / qn)), names =
-                 F)
+                 F, na.rm = T)
     qn1 = length(qq1)
     dz = NULL
-    for (i in 1:length(qq1)) {
-      if (ki == 0) {
+    if (effects == "individual" & ki == 0) {
+      xk = 0
+      kxk = 0
+      ktt = 0
+      for (i in 1:length(qq1)) {
         z = cbind(z2, z1 * (q > qq1[i]))
         lz = lagnmatrix(n, t, z, 1)
         dz[[i]] = trimrmatrix(n, t, (z - lz), ml)
-        if (isTRUE(anyNA(dz[[i]])))
-          stop("Covariates must not contain NA values.")
-      } else if (ki == 1) {
+      }
+    } else if (effects == "individual" & ki == 1) {
+      xk = mf$mf[[3]] # kink vars.
+      kxk = dimen(xk)$nc
+      ktt = 0
+      for (i in 1:length(qq1)) {
         z =
           cbind(z2, z1 * (q - qq1[i]) * (q > qq1[i]), xk)
         lz = lagnmatrix(n, t, z, 1)
         dz[[i]] = trimrmatrix(n, t, (z - lz), ml)
-        if (isTRUE(anyNA(dz[[i]])))
-          stop("Covariates must not contain NA values.")
+      }
+    } else if (effects == "twoways" & ki == 0) {
+      xk = 0
+      kxk = 0
+      ktt = dimen(tt)$nc
+      for (i in 1:length(qq1)) {
+        z =
+          cbind(z2, z1 * (q - qq1[i]) * (q > qq1[i]), tt)
+        lz = lagnmatrix(n, t, z, 1)
+        dz[[i]] = trimrmatrix(n, t, (z - lz), ml)
+      }
+    } else if (effects == "twoways" & ki == 1) {
+      xk = mf$mf[[3]] # kink vars.
+      kxk = dimen(xk)$nc
+      ktt = dimen(tt)$nc
+      for (i in 1:length(qq1)) {
+        z =
+          cbind(z2, z1 * (q - qq1[i]) * (q > qq1[i]), xk, tt)
+        lz = lagnmatrix(n, t, z, 1)
+        dz[[i]] = trimrmatrix(n, t, (z - lz), ml)
       }
     }
     npar = dimen(dz[[1]])$nc
     npar1 = 2 + npar + 1
+    p1 = cbind(cbind(matrix(0, k1, k2)), diag(k1))
     ntu = dimen(iv)$nr
     mom = dimen(iv)$nc
     zst = replicate(mom, rnorm(jj))
@@ -140,14 +153,18 @@ dptee =
         col2[i, ] = c(gmm2$s, qq1[i], gmm2$b, gmm2$resid)
         #-- supW statistic
         gmm2b = gmm2$b
-        if (ki == 0) {
-          p1 = cbind(cbind(matrix(0, k1, k2)), diag(k1))
+        if (effects == "individual" & ki == 0) {
           p1b = p1 %*% gmm2b
           ivdz = crossprod(iv, dz[[i]]) / n
-        } else if (ki == 1) {
-          p1 = cbind(cbind(matrix(0, k1, k2)), diag(k1))
+        } else if (effects == "individual" & ki == 1) {
           p1b = p1 %*% gmm2b[-(k + 1):-(k + kxk)]
           ivdz = crossprod(iv, dz[[i]][, -(k + 1):-(k + kxk)]) / n
+        } else if (effects == "twoways" & ki == 0) {
+          p1b = p1 %*% gmm2b[-(k + 1):-(k + ktt)]
+          ivdz = crossprod(iv, dz[[i]][, -(k + 1):-(k + ktt)]) / n
+        } else if (effects == "twoways" & ki == 1) {
+          p1b = p1 %*% gmm2b[-(k + 1):-(k + kxk + ktt)]
+          ivdz = crossprod(iv, dz[[i]][, -(k + 1):-(k + kxk + ktt)]) / n
         }
         u2 = col1[i, npar1:ccol1]
         iwi = makeW(n, iv, u = u2)
@@ -176,7 +193,6 @@ dptee =
       dehat = col2hat[1, npar1:dimen(col2hat)$nc]
       coefs[it, ] = col2hat[1, 2:(2 + npar)]
       Js[it] = n * col2hat[1, 1]
-      # LinT1 = colp[1]
       colp[it] =
         1 - length(which(apply(wnst, 2, function(x)
           max(x, na.rm = TRUE)) <= max(wn))) / jj
@@ -184,38 +200,42 @@ dptee =
       wn_A = wn_A + wn
     }
     # 5. Extract and format results -------------------------------------------
-    coef1 = coefs[1, ]
-    coef = colMeans(coefs)
-    Jhat1 = Js[1]
-    Jhat = mean(Js)
-    # LinT
-    ltp_A =
-      1 - length(which(apply(wnst_A, 2, function(x)
-        max(x, na.rm = TRUE)) <= max(wn_A))) / jj
-    result = list()
-    method =
-      list(
-        an = list(coef1, q, eq, z2, z1, n, t, ml, dy, iv, con, xk, kxk, effects),
-        av = list(coef, q, eq, z2, z1, n, t, ml, dy, iv, con, xk, kxk, effects)
-      )
-    for (type in 1:2) {
-      result[[type]] = estimate(
-        method[[type]][[1]],
-        method[[type]][[2]],
-        method[[type]][[3]],
-        method[[type]][[4]],
-        method[[type]][[5]],
-        method[[type]][[6]],
-        method[[type]][[7]],
-        method[[type]][[8]],
-        method[[type]][[9]],
-        method[[type]][[10]],
-        method[[type]][[11]],
-        method[[type]][[12]],
-        method[[type]][[13]],
-        method[[type]][[14]]
-      )
+    if (model == "analytical") {
+      coef = coefs[1, ]
+      Jhat = Js[1]
+      LinT = colp[1]
+    } else if (model == "averaging") {
+      coef = colMeans(coefs)
+      Jhat = mean(Js)
+      LinT =
+        1 - length(which(apply(wnst_A, 2, function(x)
+          max(x, na.rm = TRUE)) <= max(wn_A))) / jj
+    } else {
+      stop("Choose a model.")
     }
+    names(coef) = c(colnames(mf$mf[[2]]),
+                    colnames(z2),
+                    colnames(z1),
+                    colnames(xk),
+                    colnames(tt))
+    result = estimate(coef,
+                      q,
+                      eq,
+                      z2,
+                      z1,
+                      n,
+                      t,
+                      ml,
+                      dy,
+                      iv,
+                      con,
+                      xk,
+                      kxk,
+                      effects,
+                      tt,
+                      ktt,
+                      ki,
+                      display.dummies)
     # Comp. time --------------------------------------------------------------
     end_time = Sys.time()
     et = end_time - start_time
@@ -229,9 +249,7 @@ dptee =
         "result" = result,
         "et" = et,
         "Jhat" = Jhat,
-        "Jhat1" = Jhat1,
-        "LinT" = ltp_A,
-        "LinT1" = colp[1],
+        "LinT" = LinT,
         "mom" = mom,
         "con" = con,
         "effects" = effects,

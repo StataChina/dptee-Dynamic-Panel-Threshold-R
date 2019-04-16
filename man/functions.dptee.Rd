@@ -22,11 +22,9 @@ dimen(x)
 
 gmm(n, y, x, iv, w)
 
-estimate(coef, q, eq, z2, z1, n, t, ml, dy, iv, con, xk, kxk, effects)
+estimate(coef, q, eq, z2, z1, n, t, ml, dy, iv, con, xk, kxk, effects, tt, ktt, ki, display.dummies)
 
-makeIV(eq, data)
-
-makeMF(eq, data)
+makeMF(eq, data, effects, normal.inst)
 
 makeW(n, iv, u = NULL)
 }
@@ -41,12 +39,10 @@ Function (3): dimen(x)
 
 Function (4): gmm(n, y, x, iv, w)
 
-Function (5): estimate(coef, q, eq, z2, z1, n, t, ml, dy, iv, con, xk, kxk, effects)
+Function (5): estimate(coef, q, eq, z2, z1, n, t, ml, dy, iv, con, xk, kxk, effects, tt, ktt, ki, display.dummies)
 
-Function (6): makeIV(eq, data)
+Function (6): makeMF(eq, data, effects, normal.inst)
 
-Function (7): makeMF(eq, data)
-
-Function (8): makeW(n, iv, u = NULL)
+Function (7): makeW(n, iv, u = NULL)
 }
 \keyword{internal}

@@ -8,13 +8,13 @@ Summary for dptee objects
 The summary method for dptee objects generates information about estimated dptee models.
 }
 \usage{
-\method{summary}{dptee}(object, method, digits = 3, ...)
+\method{summary}{dptee}(object, digits, signif.stars, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{object}{a dptee object,}
-  \item{method}{one of 'analytic' (default) or 'averaging',}
-  \item{digits}{the digits,}
+  \item{digits}{digits,}
+  \item{signif.stars}{signif.stars,}
   \item{...}{further arguments.}
 }
 %\details{
